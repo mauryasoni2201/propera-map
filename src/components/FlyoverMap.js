@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl/dist/mapbox-gl-csp';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { CHAPTERS, SCENES, SCENE_CHAPTER, LIGHT_CFG, PRESET_META } from '../data/flyoverData';
+
+mapboxgl.workerUrl = process.env.PUBLIC_URL + '/mapbox-gl-csp-worker.js';
 
 function FlyoverMap({ token }) {
   const mapContainerRef = useRef(null);

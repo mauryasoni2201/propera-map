@@ -17,7 +17,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "postinstall": "node -e \"require('fs').copyFileSync('node_modules/mapbox-gl/dist/mapbox-gl-csp-worker.js', 'public/mapbox-gl-csp-worker.js')\""
   },
   "eslintConfig": {
     "extends": [
