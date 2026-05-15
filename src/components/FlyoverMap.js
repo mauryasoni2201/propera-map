@@ -116,11 +116,13 @@ function FlyoverMap({ token }) {
     const el = lblRef.current;
     if (!el) return;
     el.classList.remove('show');
+    // Label has already been hidden since scheduleScene started; 50ms tick is
+    // enough for the DOM to register the removal before we re-add 'show'
     setTimeout(() => {
       if (ltRef.current) ltRef.current.textContent = sc.name;
       if (lsRef.current) lsRef.current.textContent = sc.sub;
       el.classList.add('show');
-    }, 420);
+    }, 50);
   }
 
   function showChapterCard(chapterIdx, cb) {
@@ -167,12 +169,13 @@ function FlyoverMap({ token }) {
       easing: t => t < 0.45 ? 2.4 * t * t : 1 - Math.pow(-2 * t + 2, 2.4) / 2
     });
 
-    // Show label at ~60% of flyDur — camera is ~79% toward destination,
-    // clearly past the previous city, and visible long enough before next scene
+    // Show label at 45% of flyDur so it has maximum visibility time.
+    // At that point the easing curve has the camera ~49% toward the new scene —
+    // well into the transition — and the label stays visible through the full hold.
     labelTimerRef.current = setTimeout(() => {
       labelTimerRef.current = null;
       showLabel(sc);
-    }, Math.round(flyDur * 0.6));
+    }, Math.round(flyDur * 0.45));
 
     startProgress(totalDur);
 
