@@ -27,27 +27,7 @@ export const CHAPTERS = [
     ]
   },
   {
-    id: 'birmingham', name: 'Birmingham', num: 'Chapter III',
-    tagline: 'Commercial Scale · National Connectivity · HS2',
-    scenes: [
-      { name: 'Birmingham Cityscape', sub: 'Commercial heart of England — HS2 regeneration era', center: [-1.895, 52.480], zoom: 13.0, pitch: 54, bearing: -15, lightPreset: 'day', duration: 10000, holdMs: 2000, altFt: 3000 },
-      { name: 'Bullring & Selfridges', sub: 'Iconic architecture · retail landmark · city centre', center: [-1.892, 52.477], zoom: 16.4, pitch: 70, bearing: 60, lightPreset: 'day', duration: 9500, holdMs: 2000, altFt: 460 },
-      { name: 'Paradise Redevelopment', sub: '£700m urban regeneration · Centenary Square', center: [-1.904, 52.481], zoom: 16.0, pitch: 66, bearing: -80, lightPreset: 'dusk', duration: 9500, holdMs: 2000, altFt: 500 },
-      { name: 'Broad Street', sub: 'Financial district · Alpha Tower · Birmingham skyline', center: [-1.912, 52.479], zoom: 15.8, pitch: 68, bearing: 155, lightPreset: 'dusk', duration: 9000, holdMs: 1800, altFt: 520 }
-    ]
-  },
-  {
-    id: 'liverpool', name: 'Liverpool', num: 'Chapter IV',
-    tagline: 'Maritime Heritage · Waterfront · Culture',
-    scenes: [
-      { name: 'Liverpool Waterfront', sub: 'UNESCO World Heritage waterfront — maritime legacy', center: [-2.996, 53.401], zoom: 13.5, pitch: 55, bearing: 90, lightPreset: 'dawn', duration: 10000, holdMs: 2200, altFt: 2200 },
-      { name: 'Royal Liver Building', sub: '1911 · Grade I listed · Liver Birds · iconic skyline', center: [-2.997, 53.403], zoom: 16.6, pitch: 72, bearing: 170, lightPreset: 'dawn', duration: 10000, holdMs: 2500, altFt: 420 },
-      { name: 'Albert Dock', sub: 'Victorian docklands · Tate Liverpool · regeneration landmark', center: [-2.993, 53.400], zoom: 16.2, pitch: 66, bearing: -110, lightPreset: 'day', duration: 9000, holdMs: 2000, altFt: 500 },
-      { name: 'Liverpool ONE & Skyline', sub: 'Modern waterfront towers · retail quarter · urban vision', center: [-2.987, 53.404], zoom: 15.4, pitch: 62, bearing: 220, lightPreset: 'dusk', duration: 9500, holdMs: 1800, altFt: 650 }
-    ]
-  },
-  {
-    id: 'edinburgh', name: 'Edinburgh', num: 'Chapter V',
+    id: 'edinburgh', name: 'Edinburgh', num: 'Chapter III',
     tagline: 'Prestige · Historic Britain · Institutional Trust',
     scenes: [
       { name: 'Edinburgh Skyline', sub: 'Capital of Scotland — heritage, gravitas, international prestige', center: [-3.192, 55.952], zoom: 12.8, pitch: 52, bearing: -20, lightPreset: 'dawn', duration: 10000, holdMs: 2000, altFt: 3400 },
@@ -57,38 +37,22 @@ export const CHAPTERS = [
     ]
   },
   {
-    id: 'glasgow', name: 'Glasgow', num: 'Chapter VI',
-    tagline: 'Industrial Reinvention · Creativity · Modern Scotland',
+    id: 'cardiff', name: 'Cardiff', num: 'Chapter IV',
+    tagline: 'Welsh Capital · Waterfront Regeneration · Cultural Heart',
     scenes: [
-      { name: 'Glasgow & River Clyde', sub: "Industrial reinvention — Scotland's creative powerhouse", center: [-4.283, 55.860], zoom: 13.0, pitch: 54, bearing: 60, lightPreset: 'dusk', duration: 9500, holdMs: 1800, altFt: 2800 },
-      { name: 'SEC Armadillo & Hydro', sub: 'SEC campus · entertainment & conference landmark · Clydeside', center: [-4.289, 55.861], zoom: 15.8, pitch: 68, bearing: 130, lightPreset: 'night', duration: 10000, holdMs: 2200, altFt: 520 },
-      { name: 'Finnieston & Squinty Bridge', sub: 'Urban regeneration · Glasgow waterfront · riverside living', center: [-4.280, 55.860], zoom: 15.5, pitch: 64, bearing: -50, lightPreset: 'night', duration: 9000, holdMs: 1800, altFt: 600 }
+      { name: 'Cardiff Bay', sub: 'Welsh waterfront renaissance — Senedd, Millennium Centre, Mermaid Quay', center: [-3.162, 51.462], zoom: 13.5, pitch: 52, bearing: 20, lightPreset: 'dawn', duration: 10000, holdMs: 2000, altFt: 2800 },
+      { name: 'Cardiff Castle', sub: 'Norman fortress & Victorian Gothic extravagance · heart of the capital', center: [-3.181, 51.481], zoom: 16.2, pitch: 70, bearing: 80, lightPreset: 'day', duration: 9500, holdMs: 2000, altFt: 460 },
+      { name: 'Wales Millennium Centre', sub: "Cultural icon on Cardiff Bay · 'In These Stones Horizons Sing' · 2004", center: [-3.163, 51.462], zoom: 15.8, pitch: 66, bearing: -60, lightPreset: 'dusk', duration: 9500, holdMs: 1800, altFt: 540 }
     ]
   },
   {
-    id: 'leeds', name: 'Leeds', num: 'Chapter VII',
-    tagline: 'Financial Services · Professional · South Bank',
+    id: 'dublin', name: 'Dublin', num: 'Chapter V',
+    tagline: 'European Tech Hub · Georgian Heritage · Silicon Docks',
     scenes: [
-      { name: 'Leeds Financial District', sub: "UK's largest financial centre outside London", center: [-1.546, 53.799], zoom: 13.5, pitch: 54, bearing: 20, lightPreset: 'day', duration: 9500, holdMs: 1800, altFt: 2600 },
-      { name: 'Bridgewater Place', sub: "42-storey tower · Yorkshire's tallest · Leeds skyline", center: [-1.548, 53.795], zoom: 16.2, pitch: 72, bearing: -40, lightPreset: 'day', duration: 9500, holdMs: 2000, altFt: 460 },
-      { name: 'Leeds South Bank', sub: '£350m regeneration · Victoria Gate · cultural quarter', center: [-1.541, 53.793], zoom: 15.6, pitch: 64, bearing: 150, lightPreset: 'dusk', duration: 9000, holdMs: 1800, altFt: 580 }
-    ]
-  },
-  {
-    id: 'newcastle', name: 'Newcastle', num: 'Chapter VIII',
-    tagline: 'Architectural Identity · Tyne · Northern Culture',
-    scenes: [
-      { name: 'Tyne Bridge at Night', sub: 'Iconic 1928 arch bridge · symbol of the North East', center: [-1.611, 54.968], zoom: 16.0, pitch: 70, bearing: -10, lightPreset: 'night', duration: 10000, holdMs: 2500, altFt: 480 },
-      { name: 'Millennium Bridge & Quayside', sub: 'BALTIC · Sage Gateshead · tilting bridge reflections', center: [-1.609, 54.970], zoom: 15.8, pitch: 66, bearing: 170, lightPreset: 'night', duration: 9500, holdMs: 2000, altFt: 520 },
-      { name: 'Newcastle Cityscape', sub: 'Grey Street · St Nicholas Cathedral · urban heritage', center: [-1.614, 54.975], zoom: 14.2, pitch: 58, bearing: 60, lightPreset: 'night', duration: 9500, holdMs: 1800, altFt: 1400 }
-    ]
-  },
-  {
-    id: 'london-close', name: 'London Return', num: 'Finale',
-    tagline: 'Return to the Capital · Night Skyline',
-    scenes: [
-      { name: 'London Night Panorama', sub: "City of London · The Shard · St Paul's — lit against the dark", center: [-0.088, 51.505], zoom: 12.4, pitch: 54, bearing: -128, lightPreset: 'night', duration: 11000, holdMs: 2500, altFt: 4200 },
-      { name: 'Thames at Night', sub: 'Golden reflections · bridges of light · end of the journey', center: [-0.115, 51.504], zoom: 14.0, pitch: 65, bearing: 80, lightPreset: 'night', duration: 10000, holdMs: 3000, altFt: 1200 }
+      { name: 'Dublin City Centre', sub: 'River Liffey skyline — Georgian capital & European tech powerhouse', center: [-6.260, 53.349], zoom: 13.0, pitch: 52, bearing: -15, lightPreset: 'dawn', duration: 10000, holdMs: 2000, altFt: 3000 },
+      { name: "Ha'penny Bridge", sub: "Cast iron pedestrian bridge · 1816 · Dublin's most iconic crossing", center: [-6.265, 53.347], zoom: 16.6, pitch: 70, bearing: 120, lightPreset: 'day', duration: 10000, holdMs: 2500, altFt: 400 },
+      { name: 'Silicon Docks', sub: 'Google · Meta · Grand Canal Square · European tech headquarters', center: [-6.234, 53.343], zoom: 15.6, pitch: 66, bearing: 200, lightPreset: 'dusk', duration: 9500, holdMs: 2000, altFt: 600 },
+      { name: 'Trinity College', sub: "Cobblestoned quadrangles · Book of Kells · founded 1592", center: [-6.254, 53.344], zoom: 16.0, pitch: 68, bearing: -50, lightPreset: 'night', duration: 10000, holdMs: 2500, altFt: 480 }
     ]
   }
 ];

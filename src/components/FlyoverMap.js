@@ -12,8 +12,9 @@ function FlyoverMap({ token }) {
   // Mutable state via refs (avoids stale-closure issues in callbacks)
   const curRef           = useRef(0);
   const playingRef       = useRef(true);
-  const spdRef           = useRef(1);
+  const spdRef           = useRef(2);
   const holdTimerRef     = useRef(null);
+  const labelTimerRef    = useRef(null);
   const manualPresetRef  = useRef('day');
   const particlesRafRef  = useRef(null);
   const particlesResizeRef = useRef(null);
@@ -148,6 +149,7 @@ function FlyoverMap({ token }) {
 
   function scheduleScene(i) {
     if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (labelTimerRef.current) { clearTimeout(labelTimerRef.current); labelTimerRef.current = null; }
     curRef.current = i;
     const sc      = SCENES[i];
     const flyDur  = Math.round(sc.duration / spdRef.current);
@@ -156,11 +158,20 @@ function FlyoverMap({ token }) {
 
     if (!manualPresetRef.current) applyLights(sc.lightPreset);
 
+    // Hide label immediately so it never shows the new city name over the old city view
+    if (lblRef.current) lblRef.current.classList.remove('show');
+
     mapRef.current.flyTo({
       center: sc.center, zoom: sc.zoom, pitch: sc.pitch, bearing: sc.bearing,
       duration: flyDur,
       easing: t => t < 0.45 ? 2.4 * t * t : 1 - Math.pow(-2 * t + 2, 2.4) / 2
     });
+
+    // Show label only once the camera has arrived at the destination
+    labelTimerRef.current = setTimeout(() => {
+      labelTimerRef.current = null;
+      showLabel(sc);
+    }, Math.max(flyDur - 400, 300));
 
     startProgress(totalDur);
 
@@ -190,7 +201,6 @@ function FlyoverMap({ token }) {
     const prevChap = SCENE_CHAPTER[curRef.current];
     const newChap  = SCENE_CHAPTER[i];
     refreshUI(i);
-    showLabel(SCENES[i]);
     chromaFlash();
     if (manual && newChap !== prevChap) {
       showChapterCard(newChap, () => scheduleSceneRef.current(i));
@@ -368,7 +378,6 @@ function FlyoverMap({ token }) {
             if (lbadgeRef.current) lbadgeRef.current.classList.add('show');
             showChapterCard(0, () => {
               refreshUI(0);
-              showLabel(SCENES[0]);
               if (playingRef.current) scheduleSceneRef.current(0);
             });
           }, 1000);
@@ -392,6 +401,7 @@ function FlyoverMap({ token }) {
     return () => {
       document.removeEventListener('keydown', onKey);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (labelTimerRef.current) clearTimeout(labelTimerRef.current);
       if (particlesRafRef.current) cancelAnimationFrame(particlesRafRef.current);
       if (particlesResizeRef.current) window.removeEventListener('resize', particlesResizeRef.current);
       map.remove();
@@ -457,7 +467,7 @@ function FlyoverMap({ token }) {
         <button className="cb" title="Next →"
           onClick={() => goToScene((curRef.current + 1) % SCENES.length, true)}>&#8594;</button>
         <button className="cb-skip" onClick={() => skipChapter(1)}>Chapter ▶</button>
-        <select id="spd" defaultValue="1" onChange={e => {
+        <select id="spd" defaultValue="2" onChange={e => {
           spdRef.current = parseFloat(e.target.value);
           if (mapRef.current && playingRef.current) {
             if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
