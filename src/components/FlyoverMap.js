@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl/dist/mapbox-gl-csp';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { CHAPTERS, SCENES, SCENE_CHAPTER, LIGHT_CFG, PRESET_META } from '../data/flyoverData';
 
-mapboxgl.workerUrl = process.env.PUBLIC_URL + '/mapbox-gl-csp-worker.js';
+mapboxgl.workerUrl = process.env.PUBLIC_URL + '/mapbox-worker-wrapper.js';
 
 function FlyoverMap({ token }) {
   const mapContainerRef = useRef(null);
@@ -12,7 +12,7 @@ function FlyoverMap({ token }) {
   // Mutable state via refs (avoids stale-closure issues in callbacks)
   const curRef           = useRef(0);
   const playingRef       = useRef(true);
-  const spdRef           = useRef(2);
+  const spdRef           = useRef(1.5);
   const holdTimerRef     = useRef(null);
   const labelTimerRef    = useRef(null);
   const manualPresetRef  = useRef('day');
@@ -200,7 +200,9 @@ function FlyoverMap({ token }) {
   }
 
   function goToScene(i, manual) {
-    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (holdTimerRef.current)  { clearTimeout(holdTimerRef.current);  holdTimerRef.current  = null; }
+    if (labelTimerRef.current) { clearTimeout(labelTimerRef.current); labelTimerRef.current = null; }
+    if (lblRef.current) lblRef.current.classList.remove('show');
     stopProgress();
     const prevChap = SCENE_CHAPTER[curRef.current];
     const newChap  = SCENE_CHAPTER[i];
@@ -345,29 +347,35 @@ function FlyoverMap({ token }) {
       map.setConfigProperty('basemap', 'showRoadLabels', true);
       map.setConfigProperty('basemap', 'lightPreset', SCENES[0].lightPreset);
 
-      map.addLayer({
-        id: 'propera-buildings',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'fill-extrusion',
-        minzoom: 14,
-        paint: {
-          'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
-            0, '#d8d2c8', 20, '#c6bfb5', 50, '#a89e94', 100, '#8a8078', 200, '#6c6460', 350, '#4e4a46'],
-          'fill-extrusion-height':  ['interpolate', ['linear'], ['zoom'], 14, 0, 15, ['get', 'height']],
-          'fill-extrusion-base':    ['interpolate', ['linear'], ['zoom'], 14, 0, 15, ['get', 'min_height']],
-          'fill-extrusion-opacity': 0.85,
-          'fill-extrusion-emissive-strength': 0.18,
-          'fill-extrusion-ambient-occlusion-intensity':   0.55,
-          'fill-extrusion-ambient-occlusion-radius':      7,
-          'fill-extrusion-ambient-occlusion-wall-radius': 7,
-          'fill-extrusion-flood-light-color':              '#c8a96e',
-          'fill-extrusion-flood-light-intensity':          0.18,
-          'fill-extrusion-flood-light-wall-radius':        8,
-          'fill-extrusion-flood-light-ground-attenuation': 0.75
-        }
-      });
+      const addBuildingLayer = () => {
+        if (!map.getSource('composite') || map.getLayer('propera-buildings')) return;
+        map.addLayer({
+          id: 'propera-buildings',
+          source: 'composite',
+          'source-layer': 'building',
+          filter: ['==', 'extrude', 'true'],
+          type: 'fill-extrusion',
+          minzoom: 14,
+          paint: {
+            'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'],
+              0, '#d8d2c8', 20, '#c6bfb5', 50, '#a89e94', 100, '#8a8078', 200, '#6c6460', 350, '#4e4a46'],
+            'fill-extrusion-height':  ['interpolate', ['linear'], ['zoom'], 14, 0, 15, ['get', 'height']],
+            'fill-extrusion-base':    ['interpolate', ['linear'], ['zoom'], 14, 0, 15, ['get', 'min_height']],
+            'fill-extrusion-opacity': 0.85,
+            'fill-extrusion-emissive-strength': 0.18,
+            'fill-extrusion-ambient-occlusion-intensity':   0.55,
+            'fill-extrusion-ambient-occlusion-radius':      7,
+            'fill-extrusion-ambient-occlusion-wall-radius': 7,
+            'fill-extrusion-flood-light-color':              '#c8a96e',
+            'fill-extrusion-flood-light-intensity':          0.18,
+            'fill-extrusion-flood-light-wall-radius':        8,
+            'fill-extrusion-flood-light-ground-attenuation': 0.75
+          }
+        });
+      };
+
+      addBuildingLayer();
+      if (!map.getLayer('propera-buildings')) map.once('idle', addBuildingLayer);
 
       applyLights(SCENES[0].lightPreset);
 
@@ -471,7 +479,7 @@ function FlyoverMap({ token }) {
         <button className="cb" title="Next →"
           onClick={() => goToScene((curRef.current + 1) % SCENES.length, true)}>&#8594;</button>
         <button className="cb-skip" onClick={() => skipChapter(1)}>Chapter ▶</button>
-        <select id="spd" defaultValue="2" onChange={e => {
+        <select id="spd" defaultValue="1.5" onChange={e => {
           spdRef.current = parseFloat(e.target.value);
           if (mapRef.current && playingRef.current) {
             if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
@@ -482,7 +490,6 @@ function FlyoverMap({ token }) {
           <option value="0.6">0.6×</option>
           <option value="1">1×</option>
           <option value="1.5">1.5×</option>
-          <option value="2">2×</option>
         </select>
       </div>
 
