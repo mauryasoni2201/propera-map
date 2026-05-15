@@ -167,11 +167,12 @@ function FlyoverMap({ token }) {
       easing: t => t < 0.45 ? 2.4 * t * t : 1 - Math.pow(-2 * t + 2, 2.4) / 2
     });
 
-    // Show label only once the camera has arrived at the destination
+    // Show label at ~60% of flyDur — camera is ~79% toward destination,
+    // clearly past the previous city, and visible long enough before next scene
     labelTimerRef.current = setTimeout(() => {
       labelTimerRef.current = null;
       showLabel(sc);
-    }, Math.max(flyDur - 400, 300));
+    }, Math.round(flyDur * 0.6));
 
     startProgress(totalDur);
 
