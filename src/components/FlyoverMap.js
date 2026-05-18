@@ -12,7 +12,7 @@ function FlyoverMap({ token }) {
   // Mutable state via refs (avoids stale-closure issues in callbacks)
   const curRef           = useRef(0);
   const playingRef       = useRef(true);
-  const spdRef           = useRef(1.5);
+  const spdRef           = useRef(1);
   const holdTimerRef     = useRef(null);
   const labelTimerRef    = useRef(null);
   const manualPresetRef  = useRef('day');
@@ -42,6 +42,7 @@ function FlyoverMap({ token }) {
   const logoRevealRef  = useRef(null);
   const particlesRef   = useRef(null);
   const bplayRef       = useRef(null);
+  const satTimerRef    = useRef(null);
 
   // Forward-declare refs so mutually-recursive functions can call each other
   const scheduleSceneRef = useRef(null);
@@ -152,6 +153,7 @@ function FlyoverMap({ token }) {
   function scheduleScene(i) {
     if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
     if (labelTimerRef.current) { clearTimeout(labelTimerRef.current); labelTimerRef.current = null; }
+    if (satTimerRef.current) { clearTimeout(satTimerRef.current); satTimerRef.current = null; }
     curRef.current = i;
     const sc      = SCENES[i];
     const flyDur  = Math.round(sc.duration / spdRef.current);
@@ -159,6 +161,20 @@ function FlyoverMap({ token }) {
     const totalDur = flyDur + holdDur;
 
     if (!manualPresetRef.current) applyLights(sc.lightPreset);
+
+    // Restore 3D mode and fade satellite to near-zero (tiles keep preloading during flight)
+    const m = mapRef.current;
+    if (m) {
+      m.setConfigProperty('basemap', 'show3dObjects', true);
+      if (m.getLayer('satellite-overlay')) {
+        m.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 800, delay: 0 });
+        m.setPaintProperty('satellite-overlay', 'raster-opacity', 0.01);
+      }
+      if (m.getLayer('propera-buildings')) {
+        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 800, delay: 0 });
+        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0.85);
+      }
+    }
 
     // Hide label immediately so it never shows the new city name over the old city view
     if (lblRef.current) lblRef.current.classList.remove('show');
@@ -176,6 +192,25 @@ function FlyoverMap({ token }) {
       labelTimerRef.current = null;
       showLabel(sc);
     }, Math.round(flyDur * 0.45));
+
+    // When the camera arrives, hide standard 3D then fade satellite in cleanly
+    satTimerRef.current = setTimeout(() => {
+      satTimerRef.current = null;
+      const map = mapRef.current;
+      if (!map) return;
+      // Drop standard-style 3D objects so satellite has no layering underneath
+      map.setConfigProperty('basemap', 'show3dObjects', false);
+      if (map.getLayer('propera-buildings')) {
+        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 300, delay: 0 });
+        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
+      }
+      // Short pause so tiles finish loading before revealing
+      setTimeout(() => {
+        if (!mapRef.current || !mapRef.current.getLayer('satellite-overlay')) return;
+        mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 1200, delay: 0 });
+        mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity', 1);
+      }, 400);
+    }, flyDur);
 
     startProgress(totalDur);
 
@@ -228,6 +263,7 @@ function FlyoverMap({ token }) {
       scheduleSceneRef.current(curRef.current);
     } else {
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+      if (satTimerRef.current)  { clearTimeout(satTimerRef.current);  satTimerRef.current  = null; }
       stopProgress();
       if (mapRef.current) mapRef.current.stop();
     }
@@ -377,6 +413,22 @@ function FlyoverMap({ token }) {
       addBuildingLayer();
       if (!map.getLayer('propera-buildings')) map.once('idle', addBuildingLayer);
 
+      // Satellite overlay — added unconditionally, independent of the building layer
+      map.addSource('satellite-overlay-src', {
+        type: 'raster',
+        url: 'mapbox://mapbox.satellite',
+        tileSize: 512
+      });
+      map.addLayer({
+        id: 'satellite-overlay',
+        type: 'raster',
+        source: 'satellite-overlay-src',
+        paint: {
+          'raster-opacity': 0,
+          'raster-opacity-transition': { duration: 600, delay: 0 }
+        }
+      });
+
       applyLights(SCENES[0].lightPreset);
 
       // Intro sequence
@@ -414,6 +466,7 @@ function FlyoverMap({ token }) {
       document.removeEventListener('keydown', onKey);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (labelTimerRef.current) clearTimeout(labelTimerRef.current);
+      if (satTimerRef.current) clearTimeout(satTimerRef.current);
       if (particlesRafRef.current) cancelAnimationFrame(particlesRafRef.current);
       if (particlesResizeRef.current) window.removeEventListener('resize', particlesResizeRef.current);
       map.remove();
@@ -479,7 +532,7 @@ function FlyoverMap({ token }) {
         <button className="cb" title="Next →"
           onClick={() => goToScene((curRef.current + 1) % SCENES.length, true)}>&#8594;</button>
         <button className="cb-skip" onClick={() => skipChapter(1)}>Chapter ▶</button>
-        <select id="spd" defaultValue="1.5" onChange={e => {
+        <select id="spd" defaultValue="1" onChange={e => {
           spdRef.current = parseFloat(e.target.value);
           if (mapRef.current && playingRef.current) {
             if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
