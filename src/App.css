@@ -72,6 +72,10 @@ html, body, #root {
   100% { background-position:  40px  40px; }
 }
 
+/* ══ SKY OVERLAY ════════════════════════════════════════════════════════════ */
+/* Sky is now handled entirely by map.setFog() inside WebGL. */
+#sky-overlay { display: none; }
+
 /* ══ VIGNETTE ══════════════════════════════════════════════════════════════ */
 #vig {
   position: fixed; inset: 0; z-index: 9; pointer-events: none;

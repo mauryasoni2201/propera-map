@@ -43,6 +43,7 @@ function FlyoverMap({ token }) {
   const particlesRef   = useRef(null);
   const bplayRef       = useRef(null);
   const satTimerRef    = useRef(null);
+  const skyRef         = useRef(null);
 
   // Forward-declare refs so mutually-recursive functions can call each other
   const scheduleSceneRef = useRef(null);
@@ -166,6 +167,11 @@ function FlyoverMap({ token }) {
     const m = mapRef.current;
     if (m) {
       m.setConfigProperty('basemap', 'show3dObjects', true);
+      m.setConfigProperty('basemap', 'showPointOfInterestLabels', true);
+      m.setConfigProperty('basemap', 'showPlaceLabels', true);
+      m.setConfigProperty('basemap', 'showRoadLabels', true);
+      m.setConfigProperty('basemap', 'showTransitLabels', true);
+      try { m.setFog(null); } catch(e) {}
       if (m.getLayer('satellite-overlay')) {
         m.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 800, delay: 0 });
         m.setPaintProperty('satellite-overlay', 'raster-opacity', 0.01);
@@ -185,32 +191,45 @@ function FlyoverMap({ token }) {
       easing: t => t < 0.45 ? 2.4 * t * t : 1 - Math.pow(-2 * t + 2, 2.4) / 2
     });
 
-    // Show label at 45% of flyDur so it has maximum visibility time.
-    // At that point the easing curve has the camera ~49% toward the new scene —
-    // well into the transition — and the label stays visible through the full hold.
+    // Show label at 20% of flyDur so it is visible for most of the flight and the entire hold.
     labelTimerRef.current = setTimeout(() => {
       labelTimerRef.current = null;
       showLabel(sc);
-    }, Math.round(flyDur * 0.45));
+    }, Math.round(flyDur * 0.2));
 
-    // When the camera arrives, hide standard 3D then fade satellite in cleanly
+    // At 80% of flyDur the easing curve has the camera ~97% to destination — nearly stopped.
+    // Start hiding 3D and fading in satellite here so it is fully visible by the time
+    // the camera settles, instead of waiting for the full flight to complete.
     satTimerRef.current = setTimeout(() => {
       satTimerRef.current = null;
       const map = mapRef.current;
       if (!map) return;
-      // Drop standard-style 3D objects so satellite has no layering underneath
       map.setConfigProperty('basemap', 'show3dObjects', false);
+      map.setConfigProperty('basemap', 'showPointOfInterestLabels', false);
+      map.setConfigProperty('basemap', 'showPlaceLabels', false);
+      map.setConfigProperty('basemap', 'showRoadLabels', false);
+      map.setConfigProperty('basemap', 'showTransitLabels', false);
+      // Fade buildings out fast (150ms) so they are fully gone before satellite starts.
       if (map.getLayer('propera-buildings')) {
-        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 300, delay: 0 });
+        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 150, delay: 0 });
         map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
       }
-      // Short pause so tiles finish loading before revealing
+      // Wait for propera-buildings to finish before revealing satellite — eliminates 3D ghosting.
       setTimeout(() => {
         if (!mapRef.current || !mapRef.current.getLayer('satellite-overlay')) return;
+        mapRef.current.setFog({
+          'color': 'rgb(185, 222, 252)',
+          'high-color': 'rgb(42, 100, 210)',
+          'space-color': 'rgb(5, 8, 18)',
+          'horizon-blend': 0.07,
+          'range': [0.5, 10],
+          'star-intensity': 0
+        });
         mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 1200, delay: 0 });
         mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity', 1);
-      }, 400);
-    }, flyDur);
+        showLabel(sc);
+      }, 160);
+    }, Math.round(flyDur * 0.8));
 
     startProgress(totalDur);
 
@@ -423,9 +442,14 @@ function FlyoverMap({ token }) {
         id: 'satellite-overlay',
         type: 'raster',
         source: 'satellite-overlay-src',
+        slot: 'top',
         paint: {
           'raster-opacity': 0,
-          'raster-opacity-transition': { duration: 600, delay: 0 }
+          'raster-opacity-transition': { duration: 600, delay: 0 },
+          'raster-saturation': 0.25,
+          'raster-contrast': 0.18,
+          'raster-brightness-min': 0.08,
+          'raster-brightness-max': 1
         }
       });
 
@@ -478,6 +502,7 @@ function FlyoverMap({ token }) {
   return (
     <>
       <div ref={mapContainerRef} id="map" />
+      <div ref={skyRef} id="sky-overlay" />
       <canvas ref={particlesRef} id="particles" />
       <div id="grain" />
       <div className="bar top" />
