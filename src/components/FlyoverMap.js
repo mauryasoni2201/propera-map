@@ -16,8 +16,10 @@ function FlyoverMap({ token }) {
   const holdTimerRef     = useRef(null);
   const labelTimerRef    = useRef(null);
   const manualPresetRef  = useRef('day');
-  const particlesRafRef  = useRef(null);
+  const particlesRafRef    = useRef(null);
   const particlesResizeRef = useRef(null);
+  const particlesStartRef  = useRef(null);
+  const particlesStopRef   = useRef(null);
 
   // DOM element refs
   const fadeRef        = useRef(null);
@@ -146,6 +148,7 @@ function FlyoverMap({ token }) {
     const bplay = bplayRef.current;
     if (bplay) { bplay.innerHTML = '&#9654;'; bplay.classList.remove('on'); }
     if (particlesRef.current) particlesRef.current.classList.add('show');
+    particlesStartRef.current?.();
     setTimeout(() => {
       if (logoRevealRef.current) logoRevealRef.current.classList.add('show');
     }, 800);
@@ -167,17 +170,18 @@ function FlyoverMap({ token }) {
     const m = mapRef.current;
     if (m) {
       m.setConfigProperty('basemap', 'show3dObjects', true);
-      m.setConfigProperty('basemap', 'showPointOfInterestLabels', true);
-      m.setConfigProperty('basemap', 'showPlaceLabels', true);
-      m.setConfigProperty('basemap', 'showRoadLabels', true);
-      m.setConfigProperty('basemap', 'showTransitLabels', true);
+      m.setConfigProperty('basemap', 'showPointOfInterestLabels', false);
+      m.setConfigProperty('basemap', 'showPlaceLabels', false);
+      m.setConfigProperty('basemap', 'showRoadLabels', false);
+      m.setConfigProperty('basemap', 'showTransitLabels', false);
       try { m.setFog(null); } catch(e) {}
+      // Satellite → 3D: satellite fades out, buildings rise in slightly after.
       if (m.getLayer('satellite-overlay')) {
-        m.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 800, delay: 0 });
+        m.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 700, delay: 0 });
         m.setPaintProperty('satellite-overlay', 'raster-opacity', 0.01);
       }
       if (m.getLayer('propera-buildings')) {
-        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 800, delay: 0 });
+        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 700, delay: 300 });
         m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0.85);
       }
     }
@@ -197,39 +201,43 @@ function FlyoverMap({ token }) {
       showLabel(sc);
     }, Math.round(flyDur * 0.2));
 
-    // At 80% of flyDur the easing curve has the camera ~97% to destination — nearly stopped.
-    // Start hiding 3D and fading in satellite here so it is fully visible by the time
-    // the camera settles, instead of waiting for the full flight to complete.
+    // After the camera fully arrives, wait a brief moment for tiles to settle,
+    // then crossfade from 3D to satellite so the full flight is always visible in 3D.
     satTimerRef.current = setTimeout(() => {
       satTimerRef.current = null;
       const map = mapRef.current;
       if (!map) return;
-      map.setConfigProperty('basemap', 'show3dObjects', false);
       map.setConfigProperty('basemap', 'showPointOfInterestLabels', false);
       map.setConfigProperty('basemap', 'showPlaceLabels', false);
       map.setConfigProperty('basemap', 'showRoadLabels', false);
       map.setConfigProperty('basemap', 'showTransitLabels', false);
-      // Fade buildings out fast (150ms) so they are fully gone before satellite starts.
-      if (map.getLayer('propera-buildings')) {
-        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 150, delay: 0 });
-        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
-      }
-      // Wait for propera-buildings to finish before revealing satellite — eliminates 3D ghosting.
-      setTimeout(() => {
-        if (!mapRef.current || !mapRef.current.getLayer('satellite-overlay')) return;
-        mapRef.current.setFog({
+      // Hide Standard-style 3D objects so they don't bleed through the satellite
+      // overlay at extreme pitch angles (raster tiles don't cover the 3D volume).
+      map.setConfigProperty('basemap', 'show3dObjects', false);
+
+      if (map.getLayer('satellite-overlay')) {
+        // Fog atmosphere for satellite view — space-color matches high-color so the
+        // sky stays blue at all pitch angles instead of going near-black at the top.
+        map.setFog({
           'color': 'rgb(185, 222, 252)',
           'high-color': 'rgb(42, 100, 210)',
-          'space-color': 'rgb(5, 8, 18)',
-          'horizon-blend': 0.07,
-          'range': [0.5, 10],
+          'space-color': 'rgb(42, 100, 210)',
+          'horizon-blend': 0.12,
+          'range': [0, 4],
           'star-intensity': 0
         });
-        mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 1200, delay: 0 });
-        mapRef.current.setPaintProperty('satellite-overlay', 'raster-opacity', 1);
-        showLabel(sc);
-      }, 160);
-    }, Math.round(flyDur * 0.8));
+        // Satellite rises slowly — 3D buildings remain visible during early frames,
+        // covering any satellite tiles still loading at the destination.
+        map.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 1600, delay: 0 });
+        map.setPaintProperty('satellite-overlay', 'raster-opacity', 1);
+      }
+      if (map.getLayer('propera-buildings')) {
+        // Delay building fade-out so satellite has 600 ms to establish before 3D
+        // disappears — prevents the uncovered base-map flash between the two states.
+        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 800, delay: 600 });
+        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
+      }
+    }, flyDur + 400);
 
     startProgress(totalDur);
 
@@ -298,6 +306,7 @@ function FlyoverMap({ token }) {
   function restartFlyover() {
     if (logoRevealRef.current)  logoRevealRef.current.classList.remove('show');
     if (particlesRef.current)   particlesRef.current.classList.remove('show');
+    particlesStopRef.current?.();
     playingRef.current = true;
     const bplay = bplayRef.current;
     if (bplay) { bplay.innerHTML = '&#9646;&#9646;'; bplay.classList.add('on'); }
@@ -309,6 +318,7 @@ function FlyoverMap({ token }) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let particles = [];
+    let active = false;
 
     function resize() {
       canvas.width  = window.innerWidth;
@@ -319,7 +329,7 @@ function FlyoverMap({ token }) {
     window.addEventListener('resize', resize);
 
     function spawn() {
-      for (let i = 0; i < 120; i++) {
+      for (let i = 0; i < 60; i++) {
         particles.push({
           x: Math.random() * canvas.width, y: Math.random() * canvas.height,
           r: Math.random() * 1.5 + 0.3,   vx: (Math.random() - 0.5) * 0.3,
@@ -330,6 +340,7 @@ function FlyoverMap({ token }) {
     }
 
     function draw() {
+      if (!active) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       particles.forEach((p, idx) => {
         ctx.beginPath();
@@ -351,7 +362,14 @@ function FlyoverMap({ token }) {
     }
 
     spawn();
-    draw();
+
+    // Particles are only visible on the logo-reveal screen. Start/stop the RAF
+    // loop on demand so it doesn't run during the entire flyover.
+    particlesStartRef.current = () => { if (!active) { active = true; draw(); } };
+    particlesStopRef.current  = () => {
+      active = false;
+      if (particlesRafRef.current) { cancelAnimationFrame(particlesRafRef.current); particlesRafRef.current = null; }
+    };
   }
 
   // ── Map initialisation (runs once on mount) ───────────────────────────────
@@ -359,14 +377,16 @@ function FlyoverMap({ token }) {
     mapboxgl.accessToken = token;
 
     const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style:     'mapbox://styles/mapbox/standard',
-      center:    SCENES[0].center,
-      zoom:      SCENES[0].zoom,
-      pitch:     SCENES[0].pitch,
-      bearing:   SCENES[0].bearing,
-      antialias: true,
-      maxPitch:  85
+      container:         mapContainerRef.current,
+      style:             'mapbox://styles/mapbox/standard',
+      center:            SCENES[0].center,
+      zoom:              SCENES[0].zoom,
+      pitch:             SCENES[0].pitch,
+      bearing:           SCENES[0].bearing,
+      antialias:         true,
+      maxPitch:          85,
+      interactive:       false,   // cinematic player — no user map interaction needed
+      renderWorldCopies: false    // only render one copy of the world
     });
     mapRef.current = map;
 
@@ -397,9 +417,10 @@ function FlyoverMap({ token }) {
 
     map.on('style.load', () => {
       map.setConfigProperty('basemap', 'show3dObjects', true);
-      map.setConfigProperty('basemap', 'showPointOfInterestLabels', true);
-      map.setConfigProperty('basemap', 'showPlaceLabels', true);
-      map.setConfigProperty('basemap', 'showRoadLabels', true);
+      map.setConfigProperty('basemap', 'showPointOfInterestLabels', false);
+      map.setConfigProperty('basemap', 'showPlaceLabels', false);
+      map.setConfigProperty('basemap', 'showRoadLabels', false);
+      map.setConfigProperty('basemap', 'showTransitLabels', false);
       map.setConfigProperty('basemap', 'lightPreset', SCENES[0].lightPreset);
 
       const addBuildingLayer = () => {
@@ -491,7 +512,7 @@ function FlyoverMap({ token }) {
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (labelTimerRef.current) clearTimeout(labelTimerRef.current);
       if (satTimerRef.current) clearTimeout(satTimerRef.current);
-      if (particlesRafRef.current) cancelAnimationFrame(particlesRafRef.current);
+      particlesStopRef.current?.();
       if (particlesResizeRef.current) window.removeEventListener('resize', particlesResizeRef.current);
       map.remove();
     };
