@@ -5,23 +5,38 @@ import { CHAPTERS, SCENES, SCENE_CHAPTER, LIGHT_CFG, PRESET_META } from '../data
 
 mapboxgl.workerUrl = process.env.PUBLIC_URL + '/mapbox-worker-wrapper.js';
 
+// Smooth cubic ease-in-out — symmetric, cinematic camera feel
+const cinEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+// Preload a photo so it's in browser cache before the camera arrives
+function preloadPhoto(url) {
+  if (!url) return;
+  const img = new Image();
+  img.src = url;
+}
+
 function FlyoverMap({ token }) {
   const mapContainerRef = useRef(null);
   const mapRef          = useRef(null);
 
-  // Mutable state via refs (avoids stale-closure issues in callbacks)
-  const curRef           = useRef(0);
-  const playingRef       = useRef(true);
-  const spdRef           = useRef(1);
-  const holdTimerRef     = useRef(null);
-  const labelTimerRef    = useRef(null);
-  const manualPresetRef  = useRef('day');
+  // Playback state
+  const curRef          = useRef(0);
+  const playingRef      = useRef(true);
+  const spdRef          = useRef(1);
+  const sceneVersionRef = useRef(0); // incremented each scheduleScene call; stale callbacks bail out
+
+  // Timers
+  const holdTimerRef    = useRef(null);
+  const labelTimerRef   = useRef(null);
+  const photoTimerRef   = useRef(null);
+
+  // Particles
   const particlesRafRef    = useRef(null);
   const particlesResizeRef = useRef(null);
   const particlesStartRef  = useRef(null);
   const particlesStopRef   = useRef(null);
 
-  // DOM element refs
+  // DOM refs — map UI
   const fadeRef        = useRef(null);
   const introRef       = useRef(null);
   const chapterElRef   = useRef(null);
@@ -44,14 +59,18 @@ function FlyoverMap({ token }) {
   const logoRevealRef  = useRef(null);
   const particlesRef   = useRef(null);
   const bplayRef       = useRef(null);
-  const satTimerRef    = useRef(null);
   const skyRef         = useRef(null);
+  const photoOverlayRef = useRef(null);
+  const photoImgRef     = useRef(null);
+  const photoCreditRef  = useRef(null);
+  const manualPresetRef = useRef('day');
 
-  // Forward-declare refs so mutually-recursive functions can call each other
+  // Forward-declare for mutual recursion
   const scheduleSceneRef = useRef(null);
   const goToSceneRef     = useRef(null);
 
   // ── helpers ──────────────────────────────────────────────────────────────
+
   function applyLights(preset) {
     if (!mapRef.current) return;
     const p   = manualPresetRef.current || preset;
@@ -83,8 +102,7 @@ function FlyoverMap({ token }) {
     if (!f) return;
     f.style.transition = 'none';
     f.style.width = '0%';
-    // eslint-disable-next-line no-unused-expressions
-    f.offsetWidth; // force reflow
+    void f.offsetWidth; // force reflow
     f.style.transition = `width ${dur}ms linear`;
     f.style.width = '100%';
   }
@@ -120,8 +138,6 @@ function FlyoverMap({ token }) {
     const el = lblRef.current;
     if (!el) return;
     el.classList.remove('show');
-    // Label has already been hidden since scheduleScene started; 50ms tick is
-    // enough for the DOM to register the removal before we re-add 'show'
     setTimeout(() => {
       if (ltRef.current) ltRef.current.textContent = sc.name;
       if (lsRef.current) lsRef.current.textContent = sc.sub;
@@ -154,11 +170,60 @@ function FlyoverMap({ token }) {
     }, 800);
   }
 
+  // ── photo overlay ─────────────────────────────────────────────────────────
+
+  function showPhoto(sc, version) {
+    if (version !== sceneVersionRef.current) return;
+    const overlay = photoOverlayRef.current;
+    const img     = photoImgRef.current;
+    const credit  = photoCreditRef.current;
+    if (!overlay || !img || !sc.photo) return;
+
+    // Reset Ken Burns by removing + re-adding the animation
+    img.style.animation = 'none';
+    void img.offsetWidth; // reflow triggers restart
+    img.style.animation = '';
+
+    img.src = sc.photo;
+    overlay.classList.remove('fast');
+    overlay.classList.add('show');
+    if (credit) {
+      credit.textContent = sc.credit || '';
+      if (sc.credit) {
+        credit.classList.add('show');
+      } else {
+        credit.classList.remove('show');
+      }
+    }
+  }
+
+  function hidePhoto(immediate) {
+    if (photoTimerRef.current) { clearTimeout(photoTimerRef.current); photoTimerRef.current = null; }
+    const overlay = photoOverlayRef.current;
+    const credit  = photoCreditRef.current;
+    const img     = photoImgRef.current;
+    if (!overlay) return;
+    if (immediate) {
+      overlay.classList.add('fast');
+    } else {
+      overlay.classList.remove('fast');
+    }
+    overlay.classList.remove('show');
+    if (credit) credit.classList.remove('show');
+    // Clear old image so it doesn't flash when the next scene fades in
+    if (img) img.removeAttribute('src');
+  }
+
+  // ── scene sequencer ───────────────────────────────────────────────────────
+
   function scheduleScene(i) {
-    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (holdTimerRef.current)  { clearTimeout(holdTimerRef.current);  holdTimerRef.current  = null; }
     if (labelTimerRef.current) { clearTimeout(labelTimerRef.current); labelTimerRef.current = null; }
-    if (satTimerRef.current) { clearTimeout(satTimerRef.current); satTimerRef.current = null; }
+
+    // Stamp this scene; any callback that sees a different stamp is stale
+    const version = ++sceneVersionRef.current;
     curRef.current = i;
+
     const sc      = SCENES[i];
     const flyDur  = Math.round(sc.duration / spdRef.current);
     const holdDur = Math.round(sc.holdMs   / spdRef.current);
@@ -166,7 +231,10 @@ function FlyoverMap({ token }) {
 
     if (!manualPresetRef.current) applyLights(sc.lightPreset);
 
-    // Restore 3D mode and fade satellite to near-zero (tiles keep preloading during flight)
+    // Hide photo for the flight; restore 3D buildings
+    hidePhoto(true);
+    if (lblRef.current) lblRef.current.classList.remove('show');
+
     const m = mapRef.current;
     if (m) {
       m.setConfigProperty('basemap', 'show3dObjects', true);
@@ -174,87 +242,68 @@ function FlyoverMap({ token }) {
       m.setConfigProperty('basemap', 'showPlaceLabels', false);
       m.setConfigProperty('basemap', 'showRoadLabels', false);
       m.setConfigProperty('basemap', 'showTransitLabels', false);
-      try { m.setFog(null); } catch(e) {}
-      // Satellite → 3D: satellite fades out, buildings rise in slightly after.
-      if (m.getLayer('satellite-overlay')) {
-        m.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 700, delay: 0 });
-        m.setPaintProperty('satellite-overlay', 'raster-opacity', 0.01);
-      }
+      // Restore buildings to full opacity for 3D flight phase
       if (m.getLayer('propera-buildings')) {
-        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 700, delay: 300 });
+        m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 400, delay: 0 });
         m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0.85);
       }
     }
 
-    // Hide label immediately so it never shows the new city name over the old city view
-    if (lblRef.current) lblRef.current.classList.remove('show');
-
-    mapRef.current.flyTo({
-      center: sc.center, zoom: sc.zoom, pitch: sc.pitch, bearing: sc.bearing,
+    // Cinematic flyTo with smooth cubic ease
+    m.flyTo({
+      center:  sc.center,
+      zoom:    sc.zoom,
+      pitch:   sc.pitch,
+      bearing: sc.bearing,
       duration: flyDur,
-      easing: t => t < 0.45 ? 2.4 * t * t : 1 - Math.pow(-2 * t + 2, 2.4) / 2
+      easing:  cinEase
     });
 
-    // Show label at 20% of flyDur so it is visible for most of the flight and the entire hold.
+    // Show label partway through the flight
     labelTimerRef.current = setTimeout(() => {
       labelTimerRef.current = null;
+      if (version !== sceneVersionRef.current) return;
       showLabel(sc);
     }, Math.round(flyDur * 0.2));
 
-    // After the camera fully arrives, wait a brief moment for tiles to settle,
-    // then crossfade from 3D to satellite so the full flight is always visible in 3D.
-    satTimerRef.current = setTimeout(() => {
-      satTimerRef.current = null;
-      const map = mapRef.current;
-      if (!map) return;
-      map.setConfigProperty('basemap', 'showPointOfInterestLabels', false);
-      map.setConfigProperty('basemap', 'showPlaceLabels', false);
-      map.setConfigProperty('basemap', 'showRoadLabels', false);
-      map.setConfigProperty('basemap', 'showTransitLabels', false);
-      // Hide Standard-style 3D objects so they don't bleed through the satellite
-      // overlay at extreme pitch angles (raster tiles don't cover the 3D volume).
-      map.setConfigProperty('basemap', 'show3dObjects', false);
+    // When camera arrives: wait a beat for tiles to settle, then crossfade to photo
+    const onMoveEnd = () => {
+      if (version !== sceneVersionRef.current) return;
+      photoTimerRef.current = setTimeout(() => {
+        photoTimerRef.current = null;
+        showPhoto(sc, version);
+        // Gently soften 3D buildings under the photo
+        if (m && m.getLayer('propera-buildings')) {
+          m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 1200, delay: 400 });
+          m.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
+        }
+      }, 350);
+    };
+    m.once('moveend', onMoveEnd);
 
-      if (map.getLayer('satellite-overlay')) {
-        // Fog atmosphere for satellite view — space-color matches high-color so the
-        // sky stays blue at all pitch angles instead of going near-black at the top.
-        map.setFog({
-          'color': 'rgb(185, 222, 252)',
-          'high-color': 'rgb(42, 100, 210)',
-          'space-color': 'rgb(42, 100, 210)',
-          'horizon-blend': 0.12,
-          'range': [0, 4],
-          'star-intensity': 0
-        });
-        // Satellite rises slowly — 3D buildings remain visible during early frames,
-        // covering any satellite tiles still loading at the destination.
-        map.setPaintProperty('satellite-overlay', 'raster-opacity-transition', { duration: 1600, delay: 0 });
-        map.setPaintProperty('satellite-overlay', 'raster-opacity', 1);
-      }
-      if (map.getLayer('propera-buildings')) {
-        // Delay building fade-out so satellite has 600 ms to establish before 3D
-        // disappears — prevents the uncovered base-map flash between the two states.
-        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity-transition', { duration: 800, delay: 600 });
-        map.setPaintProperty('propera-buildings', 'fill-extrusion-opacity', 0);
-      }
-    }, flyDur + 400);
+    // Preload the NEXT scene's photo during hold so it's cached and instant
+    const nextI = (i + 1) % SCENES.length;
+    const nextPhoto = SCENES[nextI]?.photo;
+    if (nextPhoto) setTimeout(() => preloadPhoto(nextPhoto), Math.round(holdDur * 0.3));
 
     startProgress(totalDur);
 
     if (playingRef.current) {
       holdTimerRef.current = setTimeout(() => {
-        const nextI = (i + 1) % SCENES.length;
-        if (nextI === 0) {
+        if (version !== sceneVersionRef.current) return;
+        holdTimerRef.current = null;
+        const next = (i + 1) % SCENES.length;
+        if (next === 0) {
           showLogoReveal();
         } else {
           const prevChap = SCENE_CHAPTER[i];
-          const nextChap = SCENE_CHAPTER[nextI];
+          const nextChap = SCENE_CHAPTER[next];
           if (nextChap !== prevChap) {
             stopProgress();
             chromaFlash();
-            showChapterCard(nextChap, () => goToSceneRef.current(nextI, false));
+            showChapterCard(nextChap, () => goToSceneRef.current(next, false));
           } else {
-            goToSceneRef.current(nextI, false);
+            goToSceneRef.current(next, false);
           }
         }
       }, totalDur);
@@ -265,7 +314,10 @@ function FlyoverMap({ token }) {
     if (holdTimerRef.current)  { clearTimeout(holdTimerRef.current);  holdTimerRef.current  = null; }
     if (labelTimerRef.current) { clearTimeout(labelTimerRef.current); labelTimerRef.current = null; }
     if (lblRef.current) lblRef.current.classList.remove('show');
+    hidePhoto(true);
     stopProgress();
+    // Stop any in-progress camera move cleanly
+    if (mapRef.current) mapRef.current.stop();
     const prevChap = SCENE_CHAPTER[curRef.current];
     const newChap  = SCENE_CHAPTER[i];
     refreshUI(i);
@@ -277,7 +329,6 @@ function FlyoverMap({ token }) {
     }
   }
 
-  // Keep refs pointing to latest function versions
   scheduleSceneRef.current = scheduleScene;
   goToSceneRef.current     = goToScene;
 
@@ -290,7 +341,6 @@ function FlyoverMap({ token }) {
       scheduleSceneRef.current(curRef.current);
     } else {
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
-      if (satTimerRef.current)  { clearTimeout(satTimerRef.current);  satTimerRef.current  = null; }
       stopProgress();
       if (mapRef.current) mapRef.current.stop();
     }
@@ -362,9 +412,6 @@ function FlyoverMap({ token }) {
     }
 
     spawn();
-
-    // Particles are only visible on the logo-reveal screen. Start/stop the RAF
-    // loop on demand so it doesn't run during the entire flyover.
     particlesStartRef.current = () => { if (!active) { active = true; draw(); } };
     particlesStopRef.current  = () => {
       active = false;
@@ -372,7 +419,7 @@ function FlyoverMap({ token }) {
     };
   }
 
-  // ── Map initialisation (runs once on mount) ───────────────────────────────
+  // ── Map initialisation ────────────────────────────────────────────────────
   useEffect(() => {
     mapboxgl.accessToken = token;
 
@@ -385,8 +432,9 @@ function FlyoverMap({ token }) {
       bearing:           SCENES[0].bearing,
       antialias:         true,
       maxPitch:          85,
-      interactive:       false,   // cinematic player — no user map interaction needed
-      renderWorldCopies: false    // only render one copy of the world
+      interactive:       false,
+      renderWorldCopies: false,
+      fadeDuration:      0,   // instant tile appearance, eliminates tile-fade jitter
     });
     mapRef.current = map;
 
@@ -414,6 +462,10 @@ function FlyoverMap({ token }) {
     });
 
     initParticles();
+
+    // Preload the first two photos immediately
+    preloadPhoto(SCENES[0]?.photo);
+    preloadPhoto(SCENES[1]?.photo);
 
     map.on('style.load', () => {
       map.setConfigProperty('basemap', 'show3dObjects', true);
@@ -453,27 +505,6 @@ function FlyoverMap({ token }) {
       addBuildingLayer();
       if (!map.getLayer('propera-buildings')) map.once('idle', addBuildingLayer);
 
-      // Satellite overlay — added unconditionally, independent of the building layer
-      map.addSource('satellite-overlay-src', {
-        type: 'raster',
-        url: 'mapbox://mapbox.satellite',
-        tileSize: 512
-      });
-      map.addLayer({
-        id: 'satellite-overlay',
-        type: 'raster',
-        source: 'satellite-overlay-src',
-        slot: 'top',
-        paint: {
-          'raster-opacity': 0,
-          'raster-opacity-transition': { duration: 600, delay: 0 },
-          'raster-saturation': 0.25,
-          'raster-contrast': 0.18,
-          'raster-brightness-min': 0.08,
-          'raster-brightness-max': 1
-        }
-      });
-
       applyLights(SCENES[0].lightPreset);
 
       // Intro sequence
@@ -496,10 +527,9 @@ function FlyoverMap({ token }) {
 
     map.on('error', e => console.warn('[Mapbox]', e.error?.message || e));
 
-    // Keyboard
     const onKey = e => {
       if (!mapRef.current) return;
-      if (e.key === ' ')           { e.preventDefault(); setPlay(!playingRef.current); }
+      if (e.key === ' ')            { e.preventDefault(); setPlay(!playingRef.current); }
       else if (e.key === 'ArrowRight') goToSceneRef.current((curRef.current + 1) % SCENES.length, true);
       else if (e.key === 'ArrowLeft')  goToSceneRef.current((curRef.current - 1 + SCENES.length) % SCENES.length, true);
       else if (e.key === ']') skipChapter(1);
@@ -509,9 +539,9 @@ function FlyoverMap({ token }) {
 
     return () => {
       document.removeEventListener('keydown', onKey);
-      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (holdTimerRef.current)  clearTimeout(holdTimerRef.current);
       if (labelTimerRef.current) clearTimeout(labelTimerRef.current);
-      if (satTimerRef.current) clearTimeout(satTimerRef.current);
+      if (photoTimerRef.current) clearTimeout(photoTimerRef.current);
       particlesStopRef.current?.();
       if (particlesResizeRef.current) window.removeEventListener('resize', particlesResizeRef.current);
       map.remove();
@@ -524,6 +554,19 @@ function FlyoverMap({ token }) {
     <>
       <div ref={mapContainerRef} id="map" />
       <div ref={skyRef} id="sky-overlay" />
+
+      {/* Cinematic photo overlay — shown when camera arrives at a location */}
+      <div ref={photoOverlayRef} id="photo-overlay">
+        <img
+          ref={photoImgRef}
+          alt=""
+          onError={() => {
+            // If photo fails to load, hide the overlay gracefully
+            if (photoOverlayRef.current) photoOverlayRef.current.classList.remove('show');
+          }}
+        />
+      </div>
+
       <canvas ref={particlesRef} id="particles" />
       <div id="grain" />
       <div className="bar top" />
@@ -569,6 +612,8 @@ function FlyoverMap({ token }) {
 
       <div ref={sdotsRef} id="sdots" />
       <div id="pbar"><div ref={pfilRef} id="pfil" /></div>
+
+      <div ref={photoCreditRef} id="photo-credit" />
 
       <div id="ctrl">
         <button className="cb" title="Previous ←"
