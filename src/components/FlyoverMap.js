@@ -9,10 +9,17 @@ mapboxgl.workerUrl = process.env.PUBLIC_URL + '/mapbox-worker-wrapper.js';
 const cinEase = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 // Preload a photo so it's in browser cache before the camera arrives
+const photoCache = new Map();
 function preloadPhoto(url) {
-  if (!url) return;
-  const img = new Image();
-  img.src = url;
+  if (!url || photoCache.has(url)) return photoCache.get(url);
+  const promise = new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+  photoCache.set(url, promise);
+  return promise;
 }
 
 function FlyoverMap({ token }) {
@@ -172,21 +179,41 @@ function FlyoverMap({ token }) {
 
   // ── photo overlay ─────────────────────────────────────────────────────────
 
-  function showPhoto(sc, version) {
+  async function showPhoto(sc, version) {
     if (version !== sceneVersionRef.current) return;
     const overlay = photoOverlayRef.current;
     const img     = photoImgRef.current;
     const credit  = photoCreditRef.current;
     if (!overlay || !img || !sc.photo) return;
 
-    // Reset Ken Burns by removing + re-adding the animation
-    img.style.animation = 'none';
-    void img.offsetWidth; // reflow triggers restart
-    img.style.animation = '';
+    // Wait for the image to be fully loaded before showing
+    const loaded = await preloadPhoto(sc.photo);
+    // Re-check version in case scene changed while we were loading
+    if (version !== sceneVersionRef.current || !loaded) return;
 
+    // 1. Ensure overlay is hidden
+    overlay.classList.remove('show', 'fast');
+
+    // 2. Kill transitions and set the blurred starting state
+    img.style.transition = 'none';
+    img.style.animation  = 'none';
+    img.style.filter     = 'blur(4px)';
     img.src = sc.photo;
-    overlay.classList.remove('fast');
+
+    // 3. Wait two animation frames so the browser fully paints the blurred image
+    await new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+
+    // Re-check version after the rAF gap
+    if (version !== sceneVersionRef.current) return;
+
+    // 4. Re-enable transitions and reveal — smooth blur-clear + fade-in
+    img.style.transition = '';
+    img.style.filter     = '';
+    img.style.animation  = '';
     overlay.classList.add('show');
+
     if (credit) {
       credit.textContent = sc.credit || '';
       if (sc.credit) {
@@ -463,9 +490,8 @@ function FlyoverMap({ token }) {
 
     initParticles();
 
-    // Preload the first two photos immediately
-    preloadPhoto(SCENES[0]?.photo);
-    preloadPhoto(SCENES[1]?.photo);
+    // Preload ALL scene photos immediately so they're cached for smooth transitions
+    SCENES.forEach(sc => preloadPhoto(sc.photo));
 
     map.on('style.load', () => {
       map.setConfigProperty('basemap', 'show3dObjects', true);

@@ -228,8 +228,13 @@ html, body, #root {
 #photo-overlay.fast  { transition: opacity 0.3s ease; }
 #photo-overlay img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  will-change: transform;
-  animation: kenBurns 22s ease-in-out infinite alternate;
+  will-change: transform, filter;
+  filter: blur(4px);
+  transition: filter 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#photo-overlay.show img {
+  filter: blur(0px);
+  animation: kenBurns 22s ease-in-out 0.3s infinite alternate;
 }
 @keyframes kenBurns {
   from { transform: scale(1.10) translate(-1.5%, 0.8%); }
